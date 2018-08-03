@@ -40,11 +40,11 @@ void direct( quadfloat x0, quadfloat y0, quadfloat z0, quadfloat a0, quadfloat s
 
 //void RK4( quadfloat &s, quadfloat s0, quadfloat V0[], quadfloat **res);
 
-void RK4( quadfloat &s, quadfloat s0, quadfloat V0[], quadfloat pf[]);
+void RK4( quadfloat &s, quadfloat s0, quadfloat V0[], quadfloat w[]);
 
 quadfloat huf(quadfloat v[]);
 
-void Ral(quadfloat v[], quadfloat sf, quadfloat nv[6],  quadfloat h3);
+void RFk(quadfloat w[], quadfloat v[], quadfloat sf, quadfloat kc[4][6],  quadfloat h,int m);
 
 
 int main()
@@ -114,9 +114,9 @@ int main()
 	gmaxdC = -1.;
 	gmaxCC = -1.;
 
-	nam_res  = "dirsh_resq-"  + fil1 + "Ral" + fil2 + ".txt";
-	nam_comp = "dirsh_compq-" + fil1 + "Ral" + fil2 + ".txt";
-	nam_stat = "dirsh_statq-" + fil1 + "Ral" + fil2 + ".txt";
+	nam_res  = "dirsh_resq-"  + fil1 + "RKu" + fil2 + ".txt";
+	nam_comp = "dirsh_compq-" + fil1 + "RKu" + fil2 + ".txt";
+	nam_stat = "dirsh_statq-" + fil1 + "RKu" + fil2 + ".txt";
 	
 	ifstream dat("data.txt");
 	if (!dat.is_open())  return 1;
@@ -167,7 +167,7 @@ int main()
 //  Phase 2  -  Computation of geodesic line
 //  Parallel section (split total number of lines) - each independent
 
-//#pragma omp parallel for  // ???
+//#pragma omp parallel for shared(dis)
 	for (i = 0 ; i < ng ; i++)  {		
 
         C0 = zer;
@@ -447,19 +447,24 @@ void direct( quadfloat x0, quadfloat y0, quadfloat z0, quadfloat a0, quadfloat s
 //void RK4( quadfloat &s, quadfloat s0, quadfloat V0[], quadfloat **res)                   // big matrix res is only useful for detailed statistics
 void RK4( quadfloat &s, quadfloat s0, quadfloat V0[], quadfloat w[])     
 {
-	quadfloat v[6],nf[6],sf;   
-	quadfloat nv[6],h,h3,cof=0.750;
+	quadfloat v[6],sf;   
+	quadfloat kc[4][6],h;
 	unsigned long i;
+	double cof[4];
     int j,m;
-
-	h = s0/(ns - 1);
-    h3=h/3.;
+    
+ 	h = s0/(ns - 1);
     
 	 // Part 1 - initialize
     
 	for (j = 0 ; j < 6 ; j++)  { 	
 		w[j] = V0[j];
 	}
+	
+	cof[0]=0.5;
+	cof[1]=0.5;
+	cof[2]=1.0;
+	cof[3]=1.0;
 	
 	for (i = 0 ; i < ns-1 ; i++) {		// proceed along geodesic
 
@@ -468,27 +473,27 @@ void RK4( quadfloat &s, quadfloat s0, quadfloat V0[], quadfloat w[])
 
      //  Part 2 - evaluation section - 6 independent variables
 
-// ----------------  this section applies Ralson
+// ----------------  this section applies Runge-Kutta 4th order
+        
+		for (m = 0; m < 4 ; m++)  {      
+			sf=huf(v);  
+			RFk(w,v,sf,kc,h,m);
+            for (j=0;j<6;j++)
+                v[j]=w[j]+cof[m]*kc[m][j];
+		}
+         
+         for (j = 0 ; j < 6 ; j++)  {
+ 			w[j] = w[j] + (kc[0][j] + 2.*kc[1][j] + 2.*kc[2][j] + kc[3][j])/6.;
+  		}	
 
-            sf=huf(v);  
-			Ral(v,sf,nv,h3);
-            for (j = 0 ; j < 6 ; j++)  
-                    v[j]=w[j]+cof*nv[j];
-            sf=huf(v); 
-            Ral(v,sf,nf,h3);
-            for (j = 0 ; j < 6 ; j++)  {
-                w[j] = w[j] + nv[j] + 2 * nf[j];
-            }	
-
-//  -------------------------  end of Ralson
-
+//  -------------------------  end of RK-4
+        
 	}
 	
 	s = h*(ns-1);
 }
        
 //---------------------------
-
 
 quadfloat huf(quadfloat v[])
 {
@@ -498,18 +503,16 @@ quadfloat huf(quadfloat v[])
     return -(H2/H1);
 }
 
-
-void Ral(quadfloat v[], quadfloat sf, quadfloat nv[6],  quadfloat h3)	
+void RFk(quadfloat w[], quadfloat v[], quadfloat sf, quadfloat kc[4][6],  quadfloat h,int m)	
 {
-	nv[0]=h3*v[1];
-	nv[1]=h3*sf*v[0];
-	nv[2]=h3*v[3];
-	nv[3]=h3*sf*v[2];
-	nv[4]=h3*v[5];
-	nv[5]=h3*sf*v[4]/me2;
+	kc[m][0]=h*v[1];
+	kc[m][1]=h*sf*v[0];
+	kc[m][2]=h*v[3];
+	kc[m][3]=h*sf*v[2];
+	kc[m][4]=h*v[5];
+	kc[m][5]=h*sf*v[4]/me2;
 }
 //------------------------------
-
 
 quadfloat angqua( quadfloat x, quadfloat y)
 {
